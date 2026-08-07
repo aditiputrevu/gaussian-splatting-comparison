@@ -1,0 +1,10 @@
+# COLMAP / reconstruction artifacts
+colmap_output/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# VSCode
+.vscode/
