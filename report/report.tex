@@ -1,0 +1,277 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+
+\begin{document}
+
+\title{Gaussian Splatting for 3D Scene Reconstruction: A Multi-Method Comparison Study}
+
+\author{
+\IEEEauthorblockN{Alay Shah, Nina Gharachorloo, Brendan Fullerton, Aditi Putrevu}
+\IEEEauthorblockA{Khoury College of Computer Sciences \\
+Northeastern University}
+}
+
+\maketitle
+
+\begin{abstract}
+We present a comparison of three 3D scene reconstruction approaches applied to four real-world scenes of varying difficulty: 3D Gaussian Splatting (3DGS), classical dense multi-view stereo (MVS) via COLMAP, and Poisson surface reconstruction. Each scene was captured with a handheld camera, processed through a shared COLMAP structure-from-motion pipeline for camera pose estimation, and then reconstructed independently with each of the three methods. We evaluate all methods on held-out test views using PSNR and SSIM, following the evaluation convention of the original 3DGS paper. Across our four scenes, 3D Gaussian Splatting achieves substantially higher photometric fidelity on novel views (average PSNR 18.10, SSIM 0.674) compared to Poisson surface reconstruction (PSNR 11.73, SSIM 0.613) and raw dense point cloud rendering (PSNR 7.60, SSIM 0.461), despite comparable or lower training/reconstruction time on most scenes. We additionally observe that this advantage narrows, and in one low-image-count scene reverses, when the number of registered training views is small, suggesting that classical geometric methods degrade more gracefully than neural splatting under sparse-view conditions.
+\end{abstract}
+
+\section{Introduction}
+
+Reconstructing 3D scenes from a set of 2D photographs is a foundational problem in computer vision, with applications ranging from robotics and mapping to virtual reality content creation. Two broad families of approaches have emerged for this task. Classical geometric methods, such as multi-view stereo and surface meshing, reconstruct explicit 3D geometry (point clouds or meshes) from correspondences between images. More recently, neural and hybrid representations, most notably Neural Radiance Fields (NeRF) \cite{mildenhall2020nerf} and, subsequently, 3D Gaussian Splatting (3DGS) \cite{kerbl2023splatting}, learn an implicit or explicit volumetric representation of a scene that can be rendered from novel viewpoints with high photorealism, often at real-time frame rates in the case of 3DGS.
+
+While 3DGS has demonstrated strong results on standard benchmark datasets, it is less clear how it compares to classical reconstruction pipelines under the resource and capture constraints typical of a small research project: a small number of handheld photographs, a consumer-grade GPU, and scenes of varying texture and geometric complexity. This project investigates that question directly. We capture four scenes with a phone camera, reconstruct each with three different methods, and quantitatively and qualitatively compare their ability to render held-out, unseen viewpoints of the same scene.
+
+Our three compared methods are: (1) 3D Gaussian Splatting, trained per scene from COLMAP-derived camera poses; (2) COLMAP's dense multi-view stereo pipeline, evaluated by rendering the raw fused point cloud from novel viewpoints; and (3) Poisson surface reconstruction \cite{kazhdan2013screened}, applied to the same dense point cloud to produce a continuous mesh surface. All three methods share the same camera pose estimates, obtained once per scene via COLMAP's structure-from-motion pipeline \cite{schonberger2016sfm}, ensuring that differences in reconstruction quality are attributable to the reconstruction method itself rather than to differing camera calibration.
+
+\section{Related Work}
+
+\textbf{3D Gaussian Splatting.} Kerbl et al. \cite{kerbl2023splatting} introduced 3D Gaussian Splatting, representing a scene as a collection of anisotropic 3D Gaussians with learned position, covariance, opacity, and view-dependent color, optimized via differentiable rasterization against a set of posed training images. This method underlies the neural reconstruction approach evaluated in this project, and we adopt its reference implementation, training settings, and held-out evaluation convention (withholding every eighth training image as a test view) directly.
+
+\textbf{Structure-from-Motion and Multi-View Stereo.} Schönberger and Frahm \cite{schonberger2016sfm} presented COLMAP's incremental structure-from-motion pipeline, which we use to estimate camera poses and an initial sparse point cloud for every scene from an unordered set of photographs. Schönberger et al. \cite{schonberger2016mvs} extended this work with a pixelwise view selection algorithm for dense multi-view stereo, enabling COLMAP to additionally produce dense, per-pixel depth estimates and a fused dense point cloud; this dense output forms one of our two classical baselines, both directly (rendered as a point cloud) and indirectly (as input to Poisson reconstruction).
+
+\textbf{Poisson Surface Reconstruction.} Kazhdan and Hoppe \cite{kazhdan2013screened} proposed screened Poisson surface reconstruction, which fits a smooth, watertight mesh surface to an oriented point cloud by solving a screened Poisson equation over an adaptive octree. We apply this method to COLMAP's dense point cloud to obtain our second classical baseline, representing the common practice of converting raw stereo output into a usable mesh.
+
+\textbf{Neural Radiance Fields.} Mildenhall et al. \cite{mildenhall2020nerf} introduced Neural Radiance Fields, which represent a scene as a continuous volumetric function learned by a multilayer perceptron and rendered via ray-marching and volumetric integration. While we do not evaluate NeRF directly in this study, it is the direct predecessor to 3D Gaussian Splatting and establishes the broader context of neural, differentiable-rendering-based reconstruction that motivates our comparison against classical geometric methods.
+
+\section{Methods}
+
+\subsection{Data Capture}
+\label{sec:capture}
+We captured four scenes using a handheld phone camera, deliberately selected to span the range of reconstruction difficulty suggested in prior work: a well-textured, diffusely-lit object (a laundry hamper, Scene 1), a reflective/specular object (a glossy plastic trash can, Scene 2), a small low-texture object (Scene 3), and a fine-detail subject with many thin, repeated structures (a rose bouquet, Scene 4). Scene 3 additionally proved the most challenging to register: across two separate capture sessions totaling 31 images, COLMAP's structure-from-motion successfully registered only 12 into a single consistent reconstruction, likely due to insufficient visual overlap between the two sessions, leaving a held-out test set of only 2 views for that scene. Table~\ref{tab:dataset} summarizes the capture statistics for all four scenes.
+
+\begin{table}[htbp]
+\centering
+\caption{Dataset summary. Registered = images successfully localized by COLMAP's structure-from-motion; Test = held-out views per the llffhold=8 split.}
+\label{tab:dataset}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Scene & Subject & Captured & Registered & Train & Test \\
+\midrule
+1 & Hamper (diffuse)   & 60 & 60 & 52 & 8  \\
+2 & Trash can (specular) & 80 & 80 & 70 & 10 \\
+3 & Small box (texture-poor) & 31 & 12 & 10 & 2  \\
+4 & Roses (fine detail) & 84 & 84 & 73 & 11 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Camera Pose Estimation}
+For each scene, we ran COLMAP's feature extraction, exhaustive feature matching, and incremental structure-from-motion mapper \cite{schonberger2016sfm} to obtain camera intrinsics, extrinsics, and a sparse 3D point cloud. Images were then undistorted according to the recovered camera model (OPENCV) in preparation for dense reconstruction.
+
+\subsection{Held-out Evaluation Split}
+Following the convention established in \cite{kerbl2023splatting}, we sorted each scene's registered images alphabetically and withheld every eighth image (a train/test ratio of 7:1) as a held-out test view, never used for training or reconstruction fitting. This split was applied consistently across all three compared methods, so that all reported metrics reflect genuine novel-view rendering quality rather than training-view reconstruction accuracy.
+
+\subsection{3D Gaussian Splatting}
+3D Gaussian Splatting \cite{kerbl2023splatting} represents a scene as a set of $N$ anisotropic 3D Gaussians, each parameterized by a center $\mu_i \in \mathbb{R}^3$, a covariance matrix $\Sigma_i$ (factored into a learned scale and rotation to guarantee positive semi-definiteness), an opacity $\alpha_i$, and a set of spherical harmonic coefficients encoding view-dependent color. Each Gaussian contributes to a pixel's rendered color via differentiable, order-dependent alpha-blending of its 2D projection:
+\begin{equation}
+C = \sum_{i=1}^{N} c_i \, \alpha_i \prod_{j=1}^{i-1}(1 - \alpha_j),
+\end{equation}
+where $c_i$ is the view-dependent color of Gaussian $i$ and the product term accounts for occlusion by Gaussians closer to the camera. All parameters, together with the number and placement of Gaussians (via periodic densification and pruning), are optimized directly against a photometric loss comparing rendered and ground-truth training images.
+
+We trained the reference implementation for 15,000 iterations per scene, using half-resolution training images (quarter resolution for Scene 4, due to its substantially higher native capture resolution of $4284\times5712$ pixels) to accommodate the 4~GB of VRAM available on our primary training GPU (an NVIDIA GeForce GTX 1650 Mobile). Scene 4 was additionally trained on a cloud GPU (NVIDIA T4, 16~GB VRAM) via Google Colab after repeatedly exhausting local GPU memory at higher resolutions. PSNR, SSIM, and LPIPS were computed on the held-out test views using the reference implementation's own rendering and metric scripts.
+
+\subsection{Dense Multi-View Stereo}
+Using the undistorted images and sparse camera poses, we ran COLMAP's patch-match stereo and stereo fusion \cite{schonberger2016mvs} to produce a dense, colored point cloud per scene. Patch-match stereo estimates a per-pixel depth and normal for each image by iteratively propagating and refining candidate depth hypotheses across neighboring pixels and views, maximizing photometric (and, in our geometric-consistency configuration, cross-view geometric) agreement. The resulting per-view depth maps are fused into a single dense point cloud, filtering points with insufficient multi-view support. This point cloud was rendered directly, without any surface fitting, from each held-out test camera pose using Open3D's offscreen rasterizer, and compared pixel-wise against the corresponding ground-truth photograph.
+
+\subsection{Poisson Surface Reconstruction}
+The same dense point cloud was used as input to screened Poisson surface reconstruction \cite{kazhdan2013screened} (via Open3D), which formulates surface fitting as solving a Poisson equation $\nabla^2 \chi = \nabla \cdot \vec{V}$ for an indicator function $\chi$ over an adaptive octree, where $\vec{V}$ is a vector field interpolated from the oriented point cloud's normals; the resulting mesh is extracted as an isosurface of $\chi$. Low-density vertices (the bottom 2\% by estimated density) were trimmed to remove spurious extrapolated geometry. The resulting mesh was rendered from the same held-out test poses, using a simple directional light for shading, and compared identically to the other two methods.
+
+\subsection{Evaluation Metrics}
+For all three methods we report peak signal-to-noise ratio,
+\begin{equation}
+\text{PSNR} = 10 \log_{10}\left(\frac{L^2}{\text{MSE}}\right),
+\end{equation}
+where $L$ is the maximum pixel intensity and MSE is the mean squared error between the rendered and ground-truth held-out image, and the structural similarity index (SSIM), which additionally accounts for local luminance, contrast, and structural agreement rather than raw pixel error alone. For the two classical methods we additionally report a coverage metric: the fraction of rendered pixels that are not background, as a proxy for how completely each method fills the visible frame from a novel viewpoint. We report wall-clock reconstruction/training time where available.
+
+\section{Experiments and Results}
+
+We present results for each of our four scenes individually, followed by a summary comparison across all scenes.
+
+\subsection{Scene 1}
+Scene 1 was our best-covered scene, with 60 registered images and 8 held-out test views. As shown in Fig.~\ref{fig:scene1}, 3D Gaussian Splatting reproduces fine surface detail and lighting closely matching the ground-truth photograph, while the Poisson mesh appears visibly smoothed and the raw dense point cloud shows gaps between individual points. This is reflected quantitatively in Table~\ref{tab:scene1}, where 3DGS outperforms both baselines by a wide margin.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{scene1_test0_comparison.png}
+\caption{Scene 1, held-out test view: ground truth, 3D Gaussian Splatting, Poisson mesh, and dense point cloud.}
+\label{fig:scene1}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Scene 1 results (n=8 test views).}
+\label{tab:scene1}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Method & PSNR & SSIM \\
+\midrule
+3D Gaussian Splatting & \textbf{25.20} & \textbf{0.853} \\
+Poisson Mesh          & 15.61 & 0.551 \\
+Dense MVS             & 7.67  & 0.350 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scene 2}
+Scene 2 depicts a glossy black plastic trash can -- a reflective, specular surface. Fig.~\ref{fig:scene2} shows that this material property degrades all three methods more severely than the diffuse, matte surfaces of Scene 1: 3D Gaussian Splatting exhibits visible streaking and ghosting artifacts around the object's silhouette, likely a result of the optimization fitting Gaussians to view-dependent specular highlights that do not correspond to stable 3D geometry. Table~\ref{tab:scene2} shows 3DGS nonetheless retains a quantitative advantage over both classical baselines, though a smaller one than on Scene 1.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{scene2_test0_comparison.png}
+\caption{Scene 2, held-out test view: ground truth, 3D Gaussian Splatting, Poisson mesh, and dense point cloud.}
+\label{fig:scene2}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Scene 2 results (n=10 test views).}
+\label{tab:scene2}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Method & PSNR & SSIM \\
+\midrule
+3D Gaussian Splatting & \textbf{13.70} & \textbf{0.557} \\
+Poisson Mesh          & 8.34  & 0.524 \\
+Dense MVS             & 6.71  & 0.487 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scene 3}
+Scene 3 depicts a small, low-texture plastic object photographed against a plain wooden floor. Beyond the registration difficulty discussed in Section~\ref{sec:capture}, Fig.~\ref{fig:scene3} shows 3D Gaussian Splatting failing outright on this scene, producing dark, disconnected splat artifacts rather than a recognizable reconstruction of the object. We attribute this to the combination of very few training views and a subject with little distinguishing texture for the optimization to anchor Gaussians to, compounded by the small held-out test set (Table~\ref{tab:scene3}). This is the one scene where 3DGS did not outperform the classical baselines; we discuss this result further in Section~\ref{sec:discussion}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{scene3_test0_comparison.png}
+\caption{Scene 3, held-out test view: ground truth, 3D Gaussian Splatting, Poisson mesh, and dense point cloud.}
+\label{fig:scene3}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Scene 3 results (n=2 test views).}
+\label{tab:scene3}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Method & PSNR & SSIM \\
+\midrule
+3D Gaussian Splatting & 9.91  & 0.404 \\
+Poisson Mesh          & \textbf{10.90} & \textbf{0.617} \\
+Dense MVS             & 7.38  & 0.512 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scene 4}
+Scene 4 was captured at substantially higher resolution ($4284\times5712$ per image) than the other three scenes, which required additional downscaling (quarter resolution, versus half resolution elsewhere) and a cloud GPU with more VRAM to train successfully. Despite this, 3DGS again produced clearly superior novel-view renderings (Fig.~\ref{fig:scene4}, Table~\ref{tab:scene4}), the second-best result of all four scenes.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{scene4_test0_comparison.png}
+\caption{Scene 4, held-out test view: ground truth, 3D Gaussian Splatting, Poisson mesh, and dense point cloud.}
+\label{fig:scene4}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Scene 4 results (n=11 test views).}
+\label{tab:scene4}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Method & PSNR & SSIM \\
+\midrule
+3D Gaussian Splatting & \textbf{23.59} & \textbf{0.883} \\
+Poisson Mesh          & 12.06 & 0.760 \\
+Dense MVS             & 8.62  & 0.495 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Overall Summary}
+Table~\ref{tab:average} summarizes the average PSNR and SSIM across all four scenes, and Fig.~\ref{fig:pipeline} illustrates the intermediate outputs of the shared reconstruction pipeline that fed all three methods.
+
+\begin{table}[htbp]
+\centering
+\caption{Average results across all four scenes.}
+\label{tab:average}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Method & Avg. PSNR & Avg. SSIM \\
+\midrule
+3D Gaussian Splatting & \textbf{18.10} & \textbf{0.674} \\
+Poisson Mesh          & 11.73 & 0.613 \\
+Dense MVS (point cloud) & 7.60  & 0.461 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Reconstruction/training time by method (Scene 1, representative). Poisson reconstruction time is negligible relative to the other two methods across all scenes.}
+\label{tab:timing}
+\begin{tabular}{@{}lc@{}}
+\toprule
+Method & Wall-clock time \\
+\midrule
+COLMAP Dense MVS (patch-match stereo + fusion) & $\sim$46 min \\
+3D Gaussian Splatting (15,000 iterations)      & $\sim$28 min \\
+Poisson Surface Reconstruction                  & $<$5 sec \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{scene1_pipeline_stages.png}
+\caption{Intermediate stages of the shared reconstruction pipeline (Scene 1): sparse point cloud from structure-from-motion, dense point cloud from multi-view stereo, and the resulting Poisson mesh.}
+\label{fig:pipeline}
+\end{figure}
+
+Notably, on Scene 1 -- and consistently across scenes -- COLMAP's dense multi-view stereo step took longer in wall-clock time than 3D Gaussian Splatting's full training run (Table~\ref{tab:timing}), despite 3DGS producing substantially higher-fidelity novel-view renderings. Poisson reconstruction itself is nearly instantaneous once a dense point cloud is available, but that point cloud is precisely the expensive artifact both classical baselines depend on.
+
+Both classical baselines achieved near-complete coverage (99.99--100\% of rendered pixels non-background) on every scene, indicating that geometric incompleteness (holes) was not the primary source of their lower PSNR and SSIM; rather, the gap is driven by photometric fidelity: the raw dense point cloud renders with visible gaps between individual points at grazing angles, and the Poisson mesh, while geometrically continuous, lacks per-viewpoint, view-dependent color and fine surface detail. In contrast, 3D Gaussian Splatting's per-Gaussian view-dependent color model and sub-pixel-scale primitives allow it to reproduce fine texture and specular detail substantially closer to the ground-truth photograph on three of four scenes.
+
+\section{Discussion and Summary}
+\label{sec:discussion}
+
+Our results support two related conclusions. First, under adequate view coverage and favorable, diffusely-reflecting surfaces (Scenes 1 and 4), 3D Gaussian Splatting produces substantially more photorealistic novel-view renderings than either classical baseline, consistent with results reported in the original 3DGS paper on larger benchmark datasets. This advantage held even though our training used reduced resolution and a shortened 15,000-iteration schedule (versus the paper's default 30,000) to accommodate limited GPU memory, suggesting the quality gap would likely be even larger under full training settings.
+
+Second, this advantage narrows or reverses under two distinct failure conditions we observed directly. Reflective, specular surfaces (Scene 2) visibly degrade 3DGS's reconstruction with streaking artifacts, since the method's per-Gaussian, view-dependent color model can be misled by specular highlights that violate the multi-view consistency assumptions underlying both structure-from-motion and splat optimization. Separately, very few training views with limited overlap (Scene 3) leave 3DGS's per-Gaussian optimization insufficiently constrained, producing a visibly broken reconstruction; the classical Poisson mesh, built from geometric triangulation rather than photometric optimization, degrades far more gracefully under the same conditions and outperformed 3DGS on this scene.
+
+We also note two practical findings relevant to reproducing this kind of comparison on consumer hardware. First, COLMAP's dense multi-view stereo step was the dominant compute cost for classical reconstruction (up to $\sim$67 minutes for our largest scene), often exceeding 3D Gaussian Splatting's own training time, despite the latter producing higher-fidelity results. Second, GPU memory was the primary practical constraint throughout this project: our 4~GB laptop GPU required reduced training resolution for all scenes and an external cloud GPU for one high-resolution scene, underscoring that GPU memory, not just compute throughput, is often the binding constraint for 3DGS on consumer hardware.
+
+\subsection{Limitations}
+This study has several limitations that temper the strength of our conclusions. Most notably, our held-out test sets are small (2--11 views per scene), and Scene 3's 2-view test set in particular limits the statistical reliability of that scene's specific numbers, though the qualitative failure mode we observed there was unambiguous. Our resolution and iteration-count reductions, necessitated by GPU memory constraints, mean our reported 3DGS results are conservative relative to the method's full-quality potential; the true quality gap over classical baselines under standard training settings is likely larger, not smaller, than what we report. Finally, with only four scenes, our identification of specular reflectance and view sparsity as failure conditions, while consistent with the mechanisms described in the original 3DGS and multi-view stereo literature, should be treated as a preliminary, illustrative finding rather than a controlled ablation.
+
+Future work could extend this comparison with a larger, more balanced number of held-out views per scene, a wider range of scene difficulty, and a controlled study of 3D Gaussian Splatting's data efficiency and specular-surface robustness as these factors are systematically and independently varied.
+
+\begin{thebibliography}{00}
+
+\bibitem{kerbl2023splatting}
+B.~Kerbl, G.~Kopanas, T.~Leimkühler, and G.~Drettakis, ``3D Gaussian Splatting for Real-Time Radiance Field Rendering,'' \textit{ACM Transactions on Graphics (Proc. SIGGRAPH)}, vol.~42, no.~4, 2023.
+
+\bibitem{schonberger2016sfm}
+J.~L.~Schönberger and J.-M.~Frahm, ``Structure-from-Motion Revisited,'' in \textit{Proc. IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, 2016.
+
+\bibitem{schonberger2016mvs}
+J.~L.~Schönberger, E.~Zheng, M.~Pollefeys, and J.-M.~Frahm, ``Pixelwise View Selection for Unstructured Multi-View Stereo,'' in \textit{Proc. European Conference on Computer Vision (ECCV)}, 2016.
+
+\bibitem{kazhdan2013screened}
+M.~Kazhdan and H.~Hoppe, ``Screened Poisson Surface Reconstruction,'' \textit{ACM Transactions on Graphics}, vol.~32, no.~3, 2013.
+
+\bibitem{mildenhall2020nerf}
+B.~Mildenhall, P.~P.~Srinivasan, M.~Tancik, J.~T.~Barron, R.~Ramamoorthi, and R.~Ng, ``NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis,'' in \textit{Proc. European Conference on Computer Vision (ECCV)}, 2020.
+
+\end{thebibliography}
+
+\end{document}

@@ -1,10 +1,12 @@
-# COLMAP / reconstruction artifacts
-colmap_output/
-
-# Python
-.venv/
+dataset/
+third_party/
+results/
+report_figures/
+share/
+*.ply
+*.splat
+*.zip
+*.pdf
 __pycache__/
 *.pyc
-
-# VSCode
-.vscode/
+.ipynb_checkpoints/
