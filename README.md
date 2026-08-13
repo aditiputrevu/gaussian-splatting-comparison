@@ -11,15 +11,11 @@ See `report/report.tex` for the full writeup and final results.
 
 - **3DGS training: 15,000 iterations** (not the paper's default 30,000) —
   reduced due to GPU memory/time constraints on a 4GB laptop GPU.
-- **Training resolution: half (`-r 2`) for scenes 1–3, quarter (`-r 4`) for
-  scene 4** — scene 4's source photos were much higher resolution
-  (4284×5712) and repeatedly hit CUDA out-of-memory errors even at half res.
+- **Training resolution: half (`-r 2`) for scenes 1–4.
 - **Scene 4 was trained on a cloud GPU** (NVIDIA T4 via Google Colab) after
   the local GTX 1650 (4GB) couldn't fit it even at reduced resolution.
 - **Held-out test split: every 8th image** (llffhold=8), same convention as
   the reference 3DGS paper, applied consistently across all three methods.
-- **The interactive `.splat` web-viewer demo was built but not used in the
-  final presentation** — `viewer/` still works if you want to try it.
 
 ## 0. Directory layout expected
 
@@ -133,15 +129,6 @@ Produces per-scene ground-truth/3DGS/Poisson/Dense-MVS comparison grids and
 a pipeline-stages figure in `report_figures/` — these are the images used in
 `report/report.tex`.
 
-## 6. (Optional) Package a viewer demo
-
-```bash
-bash viewer/package_for_viewer.sh scene1
-```
-
-See `viewer/README.md`. Built and working, but **not used in our final
-presentation** — included here in case it's useful for anyone continuing
-this project.
 
 ## Notes on what's assumed vs. what you'll need to tweak
 
